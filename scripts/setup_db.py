@@ -1,6 +1,3 @@
-"""
-Script to initialize Cassandra keyspace and tables for the Messenger application.
-"""
 import os
 import time
 import logging
@@ -40,33 +37,50 @@ def create_keyspace(session):
 def create_tables(session):
     logger.info("Creating tables...")
     
-    session.execute("DROP TABLE IF EXISTS conversations;")
+    # Drop existing tables
+    session.execute("DROP TABLE IF EXISTS messages_by_conversation;")
+    session.execute("DROP TABLE IF EXISTS conversations_by_user;")
+    session.execute("DROP TABLE IF EXISTS conversation_lookup;")
 
-
+    # Create messages_by_conversation table
+    # Partition key: conversation_id
+    # Clustering columns: created_at DESC, message_id
     session.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id UUID PRIMARY KEY,
-            username TEXT
-        );
+        CREATE TABLE IF NOT EXISTS messages_by_conversation (
+            conversation_id INT,
+            message_id INT,
+            sender_id INT,
+            receiver_id INT,
+            content TEXT,
+            created_at TIMESTAMP,
+            PRIMARY KEY ((conversation_id), created_at, message_id)
+        ) WITH CLUSTERING ORDER BY (created_at DESC, message_id ASC);
     """)
 
+    # Create conversations_by_user table
+    # Partition key: user_id
+    # Clustering columns: last_message_at DESC, conversation_id
     session.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            conversation_id UUID PRIMARY KEY,
-            participant1 UUID,
-            participant2 UUID
-        );
+        CREATE TABLE IF NOT EXISTS conversations_by_user (
+            user_id INT,
+            conversation_id INT,
+            other_user_id INT,
+            last_message_at TIMESTAMP,
+            last_message_content TEXT,
+            PRIMARY KEY ((user_id), last_message_at, conversation_id)
+        ) WITH CLUSTERING ORDER BY (last_message_at DESC, conversation_id ASC);
     """)
 
+    # Create conversation_lookup table
+    # Partition key: user1_id, user2_id (ordered)
+    # Clustering columns: none
     session.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            conversation_id UUID,
-            message_id TIMEUUID,
-            sender_id UUID,
-            message TEXT,
-            timestamp TIMESTAMP,
-            PRIMARY KEY ((conversation_id), timestamp, message_id)
-        ) WITH CLUSTERING ORDER BY (timestamp ASC, message_id ASC);
+        CREATE TABLE IF NOT EXISTS conversation_lookup (
+            user1_id INT,
+            user2_id INT,
+            conversation_id INT,
+            PRIMARY KEY ((user1_id, user2_id))
+        );
     """)
 
     logger.info("Tables created successfully.")
